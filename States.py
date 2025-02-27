@@ -307,6 +307,8 @@ def MotionMagicExpoTurn(target_distance, base_speed, Kp, Ki, Kd):
     min_speed = 600  # Lower creep speed to blend stop better
     slow_down_threshold = target_distance * 0.01  # Start slowing down at 30% of the total distance
 
+
+    dt = 1 / 1
     while (not finished):
         # Read encoder values
         arr = checkEncoders()  
