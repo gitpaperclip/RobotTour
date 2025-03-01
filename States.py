@@ -1,4 +1,3 @@
-
 from pololu_3pi_2040_robot import robot
 
 
@@ -118,7 +117,7 @@ def resetEncodersOnce():
     firstCheckTime = time.ticks_ms()
 
     while (not finished):
-        if (currentTime - firstCheckTime < 100):
+        if (currentTime - firstCheckTime < 590):
             currentTime = time.ticks_ms()
             distance_cm_right = 0
             distance_cm_left = 0
@@ -137,17 +136,17 @@ def DoubleMotion(target_distance, base_speed, Kp, Ki, Kd, Lp, Li, Ld):
     currentTime = time.ticks_ms()
     prev_time = currentTime
     finished = False
-    Lfinished = True
+    Lfinished = False
 
     integral = 0
     prev_error = 0
     min_speed = 400  # Lower creep speed to blend stop better
-    slow_down_threshold = target_distance * 0.8  # Start slowing down at 30% of the total distance
+    slow_down_threshold = target_distance   # Start slowing down at 30% of the total distance
     
     L_integral = 0
     L_prev_error = 0
 
-    while (not (finished and Lfinished)):
+    while not (finished and Lfinished):
         # Read encoder values
         arr = checkEncoders()  
         dl = arr[0]  # Left wheel distance
@@ -193,48 +192,36 @@ def DoubleMotion(target_distance, base_speed, Kp, Ki, Kd, Lp, Li, Ld):
             adjusted_speed = creep_speed * (1 if adjusted_speed > 0 else -1)
 
         L_creep_speed = max(min_speed, base_speed * (abs(L_error) / slow_down_threshold))
-        if abs(L_adjusted_speed) < creep_speed and abs(L_error) > 0.2:
-            L_adjusted_speed = creep_speed * (1 if L_adjusted_speed > 0 else -1)
+        if abs(L_adjusted_speed) < L_creep_speed and abs(L_error) > 0.2:
+            L_adjusted_speed = L_creep_speed * (1 if L_adjusted_speed > 0 else -1)
 
         # Ensure the speed is within motor limits
         adjusted_speed = max(min(adjusted_speed, base_speed), -base_speed)
-
         L_adjusted_speed = max(min(L_adjusted_speed, base_speed), -base_speed)
 
         # Display debug info
-      #  display.fill(0)
-      #  display.text(f"Pos {dl:.2f}", 0, 20)
-      #  display.text(f"Err {error:.2f}", 0, 30)
-      #  display.text(f"Speed {adjusted_speed:.2f}", 0, 40)
-      #  display.show()
         display.fill(0)
-       # display.text(f"dr {dr:.2f}", 0, 20)
-       # display.text(f"dl {dr:.2f}", 0, 30)
         display.text(f"T {target_distance:.2f}", 0, 60)
         display.text(f"RE {error:.2f}", 0, 20)
         display.text(f"LE {L_error:.2f}", 0, 30)
         display.text(f"RS {adjusted_speed:.2f}", 0, 40)
         display.text(f"LS {L_adjusted_speed:.2f}", 0, 50)
-
         display.show()
+
         # Apply speed
         motors.set_right_speed(adjusted_speed)
         motors.set_left_speed(L_adjusted_speed)
 
-
-
-        if abs(error) < 0.1 and abs(adjusted_speed) < min_speed:  # Only stop if speed is also small
+        if abs(error) < 0.3 and abs(adjusted_speed) < min_speed:  # Only stop if speed is also small
             finished = True
 
-        if abs(L_error) < 0.1 and abs(L_adjusted_speed) < min_speed:
+        if abs(L_error) < 0.3 and abs(L_adjusted_speed) < min_speed:
             Lfinished = True
 
         prev_error = error
         L_prev_error = L_error
         prev_time = time.ticks_ms()
-        time.sleep_ms(1)  # Control loop delay
-
-
+        time.sleep_ms(10)  # Control loop delay
 
 
 def inv_sqrt(x: float) -> float:
@@ -475,52 +462,6 @@ def computeAngles():
 	yaw = math.atan2(q1*q2 + q0*q3, 0.5 - q2*q2 - q3*q3) * 57.29578  * 12.145749
 	anglesComputed = 1
 
-def turn_90_degrees_pid(target_angle, Kp):
-    global yaw
-    finished = False
-    initial_yaw = yaw  # Current yaw
-    target_yaw = initial_yaw + target_angle
-
-    # Normalize target yaw to 0-360 degrees
-    if target_yaw > 360:
-        target_yaw -= 360
-    elif target_yaw < 0:
-        target_yaw += 360
-
-    while not finished:
-        # Continuously update IMU data in this loop
-        current_yaw = yaw  # Get the current yaw
-        error = target_yaw - current_yaw
-        imu.read()
-        g = imu.gyro.last_reading_dps
-        a = imu.acc.last_reading_g
-        m = imu.mag.last_reading_gauss  # Magnetometer values in Gauss
-        ax, ay, az = a
-        gx, gy, gz = g
-        updateIMU(gx, gy, gz, ax, ay, az)
-        computeAngles()
-        display.fill(0)
-        display.text(f"true yaw {target_angle}", 0, 20)
-        display.text(f"Err {error}", 0, 30)
-        display.show()
-        # Normalize error to -180 to 180 range
-        if error > 180:
-            error -= 360
-        elif error < -180:
-            error += 360
-        
-        # PID control logic (you'll want to implement this here)
-        pid_output = Kp * error  # Simple proportional control (adjust as needed)
-        motors.set_speeds(-pid_output, pid_output)
-        
-        # Break if we're within an acceptable error threshold
-        if abs(error) < 2:
-            motors.set_speeds(0, 0) # Stop the motors when the target is reached
-            finished = True
-        
-        time.sleep(0.01)  # Sleep to avoid excessive CPU usage
-
-
 def turnToAngle(target_angle, base_speed, Kp, Ki, Kd):
     """
     Turn the robot to the target angle using PID control.
@@ -533,15 +474,17 @@ def turnToAngle(target_angle, base_speed, Kp, Ki, Kd):
         Kd (float): Derivative gain.
     """
     global yaw, imu
-    prev_time = time.ticks_ms()
+    finished = False
+    start_time = time.ticks_ms()
+    prev_time = start_time
     prev_error = 0
     integral = 0
-    finished = False
     min_speed = 400  # Minimal speed for creep control
     slow_down_threshold = 10  # Threshold for slowing down when close to target angle
+    tolerance = 0.1  # Angle tolerance in degrees
 
-
-    while not finished:
+    while (not finished or (time.ticks_diff(time.ticks_ms(), start_time)) < 1500):
+        current_time = time.ticks_ms()
         imu.read()
         g = imu.gyro.last_reading_dps
         a = imu.acc.last_reading_g
@@ -601,28 +544,217 @@ def turnToAngle(target_angle, base_speed, Kp, Ki, Kd):
         display.text(f"Speed: {adjusted_speed:.2f}", 0, 30)
         display.show()
         
-        # Check if we've reached the target angle (within a small tolerance)
-        if abs(error) < 1:
+        # Termination condition like DoubleMotion: break if error is within tolerance and speed is small
+        if abs(error) < 4.5 and abs(adjusted_speed) < min_speed:
+            motors.set_left_speed(0)
+            motors.set_right_speed(0)
             finished = True
         
         # Update previous error and time
         prev_error = error
-        prev_time = current_time
+        prev_time = current_time  # update time reference for the next iteration
         
         # Small delay to avoid overloading the control loop
         time.sleep_ms(1)
+    display.text(f"Speed: {yaw:.2f}", 0, 30)
 
 
+
+def SingleMotion(target_distance, base_speed, Kp, Ki, Kd):
+    global lastCheck, currentTime, leftCounts, rightCounts, prevLeftCounts, prevRightCounts
+    global distance_cm_left, distance_cm_right
+
+    currentTime = time.ticks_ms()
+    prev_time = currentTime
+    finished = False
+
+    integral = 0
+    prev_error = 0
+    min_speed = 300  # Lower creep speed to blend stop better
+    slow_down_threshold = target_distance * 0.3  # Start slowing down at 30% of the total distance
+    while (not finished):
+        # Read encoder values
+        arr = checkEncoders()  
+        dl = abs(arr[0])   # Left wheel distance
+        dr = abs(arr[1])
+        davg = (dl + dr) / 2
+
+        # Compute error (how far we still need to move)
+        error = target_distance - davg
+        dt = (time.ticks_ms() - prev_time) / 1000.0  # Convert to seconds
+
+        if dt <= 0:
+            dt = 0.001  # Prevent division by zero
+
+        integral += error * dt
+        derivative = (error - prev_error) / dt
+
+        # **Earlier slowdown** (Start decelerating smoothly when within 30% of target)
+        if abs(error) < slow_down_threshold:
+            scale_factor = (abs(error) / slow_down_threshold) ** 1.5  # More gradual than before
+        else:
+            scale_factor = 1  # Full speed until slowdown range
+
+        # PID raw output
+        speed = (Kp * error) + (Ki * integral) + (Kd * derivative)
+
+        # Apply gradual speed reduction
+        adjusted_speed = speed * scale_factor 
+
+        # **Adaptive Minimum Speed** (Ensures smooth slow crawling near target)
+        creep_speed = max(min_speed, base_speed * (abs(error) / slow_down_threshold))
+        if abs(adjusted_speed) < creep_speed and abs(error) > 0.2:
+            adjusted_speed = creep_speed * (1 if adjusted_speed > 0 else -1)
+
+        # Ensure the speed is within motor limits
+        adjusted_speed = max(min(adjusted_speed, base_speed), -base_speed)
+
+        # Display debug info
+      #  display.fill(0)
+      #  display.text(f"Pos {dl:.2f}", 0, 20)
+      #  display.text(f"Err {error:.2f}", 0, 30)
+      #  display.text(f"Speed {adjusted_speed:.2f}", 0, 40)
+      #  display.show()
+        display.fill(0)
+        display.text(f"dr {dr:.2f}", 0, 20)
+        display.text(f"dl {dr:.2f}", 0, 30)
+        display.text(f"targ {target_distance:.2f}", 0, 40)
+        display.text(f"Err {error:.2f}", 0, 50)
+        display.text(f"Speed {adjusted_speed:.2f}", 0, 60)
+        display.show()
+        # Apply speed
+        motors.set_speeds(adjusted_speed, adjusted_speed + (adjusted_speed * 0.01))
+
+        # **Blend into stopping instead of jerking**
+        if abs(error) < 0.1:  # Smooth final stop
+            motors.set_speeds(20, 20)  # Light final push
+            time.sleep_ms(50)  # Let it settle
+            motors.set_speeds(0, 0)
+            finished = True
+
+        prev_error = error
+        prev_time = time.ticks_ms()
+        time.sleep_ms(10)  # Control loop delay
+
+
+def MotionMagicExpoTurn(target_distance, base_speed, Kp, Ki, Kd):
+    global lastCheck, currentTime, leftCounts, rightCounts, prevLeftCounts, prevRightCounts
+
+    currentTime = time.ticks_ms()
+    prev_time = currentTime
+    finished = False
+
+    integral = 0
+    prev_error = 0
+    min_speed = 600  # Lower creep speed to blend stop better
+    slow_down_threshold = target_distance * 0.01  # Start slowing down at 30% of the total distance
+
+    while (not finished):
+        # Read encoder values
+        arr = checkEncoders()  
+        dl = arr[0]  # Left wheel ticks
+        dr = arr[1]
+        davg = abs((dl + dr) / 2)
+
+        # Compute error (how far we still need to move)
+        error = target_distance - dl
+        dt = (time.ticks_ms() - prev_time) / 1000.0  # Convert to seconds
+
+        if dt <= 0:
+            dt = 0.001  # Prevent division by zero
+
+        integral += error * dt
+        derivative = (error - prev_error) / dt
+
+        # **Earlier slowdown** (Start decelerating smoothly when within 30% of target)
+        if abs(error) < slow_down_threshold:
+            scale_factor = (abs(error) / slow_down_threshold) ** 1.5  # More gradual than before
+        else:
+            scale_factor = 1  # Full speed until slowdown range
+
+        # PID raw output
+        speed = (Kp * error) + (Ki * integral) + (Kd * derivative)
+
+        # Apply gradual speed reduction
+        adjusted_speed = speed * scale_factor
+
+        # **Adaptive Minimum Speed** (Ensures smooth slow crawling near target)
+        creep_speed = max(min_speed, base_speed * (abs(error) / slow_down_threshold))
+        if abs(adjusted_speed) < creep_speed and abs(error) > 0.2:
+            adjusted_speed = creep_speed * (1 if adjusted_speed > 0 else -1)
+
+        # Ensure the speed is within motor limits
+        adjusted_speed = max(min(adjusted_speed, base_speed), -base_speed)
+
+        # Display debug info
+        display.fill(0)
+        display.text(f"dr {dr:.2f}", 0, 20)
+        display.text(f"dl {dr:.2f}", 0, 30)
+        display.text(f"davg {davg:.2f}", 0, 30)
+        display.text(f"targ {target_distance:.2f}", 0, 40)
+        display.text(f"Err {error:.2f}", 0, 50)
+        display.text(f"Speed {adjusted_speed:.2f}", 0, 60)
+        display.show()
+
+        # Apply speed
+        motors.set_speeds(adjusted_speed, -adjusted_speed + (adjusted_speed * 0.01))
+
+        # **Blend into stopping instead of jerking**
+        if abs(error) < 0.05:  # Smooth final stop
+            motors.set_speeds(20, 20)  # Light final push
+            time.sleep_ms(50)  # Let it settle
+            motors.set_speeds(0, 0)
+            finished = True
+
+        prev_error = error
+        prev_time = time.ticks_ms()
+
+
+def checkEncodersWithWheelCommand(distanceRequired):
+    global lastCheck, currentTime, leftCounts, rightCounts, prevLeftCounts, prevRightCounts, encoderAccess, distance_cm_right, distance_cm_left
+    currentTime = time.ticks_ms()
+    finished = False
+
+    while (not finished): 
+        arr = checkEncoders()  
+        dl = arr[0]
+        dr = arr[1]   
+
+        if (dl < distanceRequired):
+            motors.set_speeds(800, 800)
+        else:
+            motors.set_speeds(0,0)
+            finished = True
+
+    prevLeftCounts = leftCounts
+    prevRightCounts = rightCounts
+    lastCheck = currentTime
 
 
 while not programFinished:
     start = time.ticks_ms()
-    turnToAngle(90, 600, 100, 0, 0)
+    checkEncodersWithWheelCommand(50)
+    resetEncodersOnce()
+    MotionMagicExpoTurn(6.74, 600, 5, 0, 0)
+    resetEncodersOnce()
+    MotionMagicExpoTurn(6.74, 600, 5, 0, 0)
+    resetEncodersOnce()
+    MotionMagicExpoTurn(6.74, 600, 5, 0, 0)
+    resetEncodersOnce()
+    MotionMagicExpoTurn(6.74, 600, 5, 0, 0)
+    resetEncodersOnce()
+    MotionMagicExpoTurn(6.74, 600, 5, 0, 0)
+    resetEncodersOnce()
+    MotionMagicExpoTurn(6.74, 600, 5, 0, 0)
+    resetEncodersOnce()
+    checkEncodersWithWheelCommand(50)
+
+    programFinished = True
     display.fill(0)
-    #DoubleMotion(30, 800, 1100, 0, 0, 1100, 0, 0.02)
+
 	
     #Mahony(gx, gy, gz, ax, ay, az, mx, my, mz)
 
 
 
-    
+

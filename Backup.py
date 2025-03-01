@@ -721,7 +721,7 @@ def checkEncodersWithWheelCommand(distanceRequired):
         dr = arr[1]   
 
         if (dl < distanceRequired):
-            motors.set_speeds(500, 500)
+            motors.set_speeds(800, 800)
         else:
             motors.set_speeds(0,0)
             finished = True
