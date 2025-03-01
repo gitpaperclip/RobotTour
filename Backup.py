@@ -60,7 +60,7 @@ RencoderTicks = 0
 LencoderTicks = 0
 
 
-encoder_update_time = 1
+encoder_update_time = 0.1
 display_update_time = 50
 
 display.fill(0)
@@ -637,10 +637,11 @@ def SingleMotion(target_distance, base_speed, Kp, Ki, Kd):
         time.sleep_ms(10)  # Control loop delay
 
 
-def MotionMagicExpoTurn(target_distance, base_speed, Kp, Ki, Kd):
+def MotionMagicExpoTurn(target_distance, base_speed, Kp, Ki, Kd, loop_start):
     global lastCheck, currentTime, leftCounts, rightCounts, prevLeftCounts, prevRightCounts
 
     currentTime = time.ticks_ms()
+    start_time = time.ticks_ms()
     prev_time = currentTime
     finished = False
 
@@ -649,7 +650,7 @@ def MotionMagicExpoTurn(target_distance, base_speed, Kp, Ki, Kd):
     min_speed = 600  # Lower creep speed to blend stop better
     slow_down_threshold = target_distance * 0.01  # Start slowing down at 30% of the total distance
 
-    while (not finished):
+    while ((not finished) or (time.ticks_diff(time.ticks_ms(), loop_start) < 1000)):
         # Read encoder values
         arr = checkEncoders()  
         dl = arr[0]  # Left wheel ticks
@@ -701,7 +702,7 @@ def MotionMagicExpoTurn(target_distance, base_speed, Kp, Ki, Kd):
 
         # **Blend into stopping instead of jerking**
         if abs(error) < 0.05:  # Smooth final stop
-            motors.set_speeds(20, 20)  # Light final push
+            motors.set_speeds(200, -200)  # Light final push
             time.sleep_ms(50)  # Let it settle
             motors.set_speeds(0, 0)
             finished = True
@@ -710,7 +711,7 @@ def MotionMagicExpoTurn(target_distance, base_speed, Kp, Ki, Kd):
         prev_time = time.ticks_ms()
 
 
-def checkEncodersWithWheelCommand(distanceRequired):
+def forw(distanceRequired):
     global lastCheck, currentTime, leftCounts, rightCounts, prevLeftCounts, prevRightCounts, encoderAccess, distance_cm_right, distance_cm_left
     currentTime = time.ticks_ms()
     finished = False
@@ -719,9 +720,45 @@ def checkEncodersWithWheelCommand(distanceRequired):
         arr = checkEncoders()  
         dl = arr[0]
         dr = arr[1]   
+        display.fill(0)
+        display.text(f"dl {dr:.2f}", 0, 20)
+        display.text(f"dr {dr:.2f}", 0, 30)
+        display.text(f"targ {distanceRequired:.2f}", 0, 40)
+        display.show()
 
         if (dl < distanceRequired):
-            motors.set_speeds(800, 800)
+            if ((distanceRequired - dl) < 5):
+              motors.set_speeds(600, 614)
+            else:
+                 motors.set_speeds(1200, 1214) # 1200, 1210
+        else:
+            motors.set_speeds(0,0)
+            finished = True
+
+    prevLeftCounts = leftCounts
+    prevRightCounts = rightCounts
+    lastCheck = currentTime
+
+def back(distanceRequired):
+    global lastCheck, currentTime, leftCounts, rightCounts, prevLeftCounts, prevRightCounts, encoderAccess, distance_cm_right, distance_cm_left
+    currentTime = time.ticks_ms()
+    finished = False
+
+    while (not finished): 
+        arr = checkEncoders()  
+        dl = -arr[0]
+        dr = -arr[1]   
+        display.fill(0)
+        display.text(f"dl {dr:.2f}", 0, 20)
+        display.text(f"dr {dr:.2f}", 0, 30)
+        display.text(f"targ {distanceRequired:.2f}", 0, 40)
+        display.show()
+
+        if (dl < distanceRequired):
+            if ((distanceRequired - dl) < 5):
+              motors.set_speeds(-600, -614)
+            else:
+                 motors.set_speeds(-1200, -1214)
         else:
             motors.set_speeds(0,0)
             finished = True
@@ -731,23 +768,88 @@ def checkEncodersWithWheelCommand(distanceRequired):
     lastCheck = currentTime
 
 
+
+def rt(distanceRequired):
+    global lastCheck, currentTime, leftCounts, rightCounts, prevLeftCounts, prevRightCounts, encoderAccess, distance_cm_right, distance_cm_left
+    finished = False
+
+    while (not finished): 
+        arr = checkEncoders()  
+        dl = arr[0]
+        dr = arr[1]   
+        display.fill(0)
+        display.text(f"dl {dr:.2f}", 0, 20)
+        display.text(f"dr {dr:.2f}", 0, 30)
+        display.text(f"targ {distanceRequired:.2f}", 0, 40)
+        display.show()
+        if (dl < distanceRequired):
+            if (distanceRequired - dl < 0.5):
+                motors.set_speeds(800, -800)
+            else:
+                motors.set_speeds(1000, -1000)
+        else:
+            motors.set_speeds(0,0)
+            finished = True
+
+    prevLeftCounts = leftCounts
+    prevRightCounts = rightCounts
+
+
+def lt(distanceRequired):
+    global lastCheck, currentTime, leftCounts, rightCounts, prevLeftCounts, prevRightCounts, encoderAccess, distance_cm_right, distance_cm_left
+    finished = False
+
+    while (not finished): 
+        arr = checkEncoders()  
+        dl = arr[0]
+        dr = arr[1]   
+        display.fill(0)
+        display.text(f"dl {dr:.2f}", 0, 20)
+        display.text(f"dr {dr:.2f}", 0, 30)
+        display.text(f"targ {distanceRequired:.2f}", 0, 40)
+        display.show()
+        if (dr < distanceRequired):
+            if (distanceRequired - dl < 0.5):
+                motors.set_speeds(-800, 800)
+            else:
+                motors.set_speeds(-1000, 1000)
+        else:
+            motors.set_speeds(0,0)
+            finished = True
+
+    prevLeftCounts = leftCounts
+    prevRightCounts = rightCounts
+
+
 while not programFinished:
     start = time.ticks_ms()
-    checkEncodersWithWheelCommand(50)
+   # LeftTurnCommand(6.485) #6.485
+
+    back(30)
     resetEncodersOnce()
-    MotionMagicExpoTurn(6.74, 600, 5, 0, 0)
+    forw(30)
     resetEncodersOnce()
-    MotionMagicExpoTurn(6.74, 600, 5, 0, 0)
+    MotionMagicExpoTurn(-6.6, 600, 5, 0, 0, time.ticks_ms())
+    time.sleep_ms(500)
     resetEncodersOnce()
-    MotionMagicExpoTurn(6.74, 600, 5, 0, 0)
+    MotionMagicExpoTurn(-6.6, 600, 5, 0, 0, time.ticks_ms())
+    time.sleep_ms(500)
     resetEncodersOnce()
-    MotionMagicExpoTurn(6.74, 600, 5, 0, 0)
+    MotionMagicExpoTurn(-6.6, 600, 5, 0, 0, time.ticks_ms())
+    time.sleep_ms(500)
     resetEncodersOnce()
-    MotionMagicExpoTurn(6.74, 600, 5, 0, 0)
+    MotionMagicExpoTurn(-6.6, 600, 5, 0, 0, time.ticks_ms())
+
+    #LeftTurnCommand(6.4) #6.4
+    #resetEncodersOnce()
+    #checkEncodersWithWheelCommand(150)
+    #resetEncodersOnce()
     resetEncodersOnce()
-    MotionMagicExpoTurn(6.74, 600, 5, 0, 0)
+    #RightTurnCommand(6.485) #6.4
+   # LeftTurnCommand(6.47) #6.4
     resetEncodersOnce()
-    checkEncodersWithWheelCommand(50)
+    #MotionMagicExpoTurn(-6.74, 600, 5, 0, 0)
+   
 
     programFinished = True
     display.fill(0)
